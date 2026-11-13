@@ -87,6 +87,7 @@ func TestEscapeMasks(t *testing.T) {
 		{"an open `\n\n<redacted> x", "an open `\n\n`<redacted>` x"},
 		{"a ` b <redacted>", "a ` b ``<redacted>``"},
 		{"C:\\<secret:DIR>", "C:\\\\`<secret:DIR>`"},
+		{"`code`<redacted>`more`", "`code` ``<redacted>`` `more`"},
 		{"C:\\\\<secret:DIR>", "C:\\\\`<secret:DIR>`"},
 	} {
 		if got := escapeMasks(tc.in); got != tc.want {

@@ -356,9 +356,13 @@ func escapeOutsideSpans(line string) string {
 	// The span a mask is put in is of more backticks than any run of the
 	// paragraph, so that no run left unmatched before it can close it.
 	delim := strings.Repeat("`", longestRun(line)+1)
-	escape := func(s string) string { return escapeIn(s, delim) }
 	var b strings.Builder
 	text := 0
+	// escape escapes the text from text to end, which a code span may close
+	// right before it and open right after it.
+	escape := func(end int) string {
+		return escapeIn(line[text:end], delim, text > 0 && line[text-1] == '`', end < len(line) && line[end] == '`')
+	}
 	for i := 0; i < len(line); {
 		if line[i] == '\\' {
 			// A backslash makes the character after it text, so an escaped
@@ -376,11 +380,11 @@ func escapeOutsideSpans(line string) string {
 			i += n
 			continue
 		}
-		b.WriteString(escape(line[text:i]))
+		b.WriteString(escape(i))
 		b.WriteString(line[i : end+n])
 		i, text = end+n, end+n
 	}
-	b.WriteString(escape(line[text:]))
+	b.WriteString(escape(len(line)))
 	return b.String()
 }
 
@@ -412,8 +416,10 @@ func closer(s string, i, n int) int {
 // escapeIn puts each mask of s in a code span delimited by delim, where
 // Slack shows it as it is rather than take it for a link or a mention. A
 // backslash right before a mask would escape the opening backtick, so it is
-// escaped itself, and shown.
-func escapeIn(s, delim string) string {
+// escaped itself, and shown. A mask at the start of s after a code span,
+// or at its end before one, is kept apart from it by a space, as the
+// backticks of the two would make one run.
+func escapeIn(s, delim string, tickBefore, tickAfter bool) string {
 	var b strings.Builder
 	last := 0
 	for _, m := range masks.FindAllStringIndex(s, -1) {
@@ -421,8 +427,14 @@ func escapeIn(s, delim string) string {
 		if trailingBackslashes(before)%2 == 1 {
 			before += "\\"
 		}
+		if m[0] == 0 && tickBefore {
+			before = " "
+		}
 		b.WriteString(before)
 		b.WriteString(delim + s[m[0]:m[1]] + delim)
+		if m[1] == len(s) && tickAfter {
+			b.WriteString(" ")
+		}
 		last = m[1]
 	}
 	b.WriteString(s[last:])

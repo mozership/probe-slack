@@ -108,7 +108,7 @@ jobs:
       res.body[-3].channel == "C0NOTES" && res.body[-3].via == "webhook" &&
       res.body[-3].blocks[0].text == "Notes of the e2e run" &&
       res.body[-3].blocks[1].text == "**The run left 3 notes: 1 critical, 1 warning, 1 info.**" &&
-      res.body[-3].blocks[2].text contains "the password `<secret:SHOP_PASSWORD>`" &&
+      res.body[-3].blocks[2].text contains "the password ``<secret:SHOP_PASSWORD>``" &&
       res.body[-3].blocks[2].text contains "_Agent › A new user signs up · passed_" &&
       res.body[-3].blocks[4].text contains "_Agent › A shopper checks out · passed_" &&
       res.body[-2].channel == "C0ALERTS" && res.body[-2].via == "token" &&
