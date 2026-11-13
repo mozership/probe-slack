@@ -71,7 +71,7 @@ func TestWebhook(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Errorf("blocks =\n%q\nwant\n%q", got, want)
 	}
-	if msgs[0].Text != "Notes of the nightly run\nThe run left 2 notes: 1 critical, 1 warning." {
+	if want := "Notes of the nightly run\n\nThe run left 2 notes: 1 critical, 1 warning.\n\ncritical: No + in an address (Sign-up › A new user signs up · passed)\nThe form refuses `qa+1@example.com`.\n\nwarning (Checkout › Pay · failed)\nThe total updates late."; msgs[0].Text != want {
 		t.Errorf("text = %q", msgs[0].Text)
 	}
 	if req := ret["req"].(map[string]any); req["via"] != "webhook" || strings.Contains(fmt.Sprint(req), fakeslack.WebhookPath) {
@@ -222,6 +222,38 @@ func TestRedirectOfThePostFails(t *testing.T) {
 	_, err := (&Action{}).Run(map[string]any{"webhook_url": moved.URL + fakeslack.WebhookPath, "text": "hi"})
 	if err == nil || !strings.Contains(err.Error(), "redirected the POST") || strings.Contains(err.Error(), fakeslack.WebhookPath) {
 		t.Errorf("error = %v, want one saying the POST was redirected, without the webhook", err)
+	}
+}
+
+// TestErrorsDoNotTellTheWebhook checks that an error of a request does not
+// tell what the URL of the webhook holds past its host, nor what a redirect
+// gave, which can be the path of the webhook.
+func TestErrorsDoNotTellTheWebhook(t *testing.T) {
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", "/services/T/B/secret%zz")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(bad.Close)
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closedURL := closed.URL
+	closed.Close()
+	for _, hook := range []string{bad.URL + "/services/T/B/secret", closedURL + "/services/T/B/secret"} {
+		_, err := (&Action{}).Run(map[string]any{"webhook_url": hook, "text": "hi"})
+		if err == nil || strings.Contains(err.Error(), "secret") || strings.Contains(err.Error(), "/services") {
+			t.Errorf("error = %v, want one without the webhook", err)
+		}
+	}
+
+	// A refusal of a redirect stays one.
+	_, ts := slack(t)
+	moved := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, ts.URL+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(moved.Close)
+	u, _ := url.Parse(moved.URL)
+	_, _, err := (&Action{}).RunStep(actionrpc.Call{With: map[string]any{"webhook_url": moved.URL + fakeslack.WebhookPath, "text": "hi"}, Guard: actionrpc.Guard{AllowHosts: []string{u.Host}}})
+	if !actionrpc.IsRefused(err) || strings.Contains(err.Error(), "/services") {
+		t.Errorf("error = %v, want a refusal of the redirect without the webhook", err)
 	}
 }
 

@@ -83,7 +83,7 @@ On a 390px wide screen the banner covers the button until it is closed.
 _Checkout › A first-time shopper · passed_
 ```
 
-The plain text of the message, which Slack shows in a notification, is the `text` and the line counting the notes.
+The plain text of the message holds the same: the `text`, the line counting the notes, and each note shown, with its level, title, job, step and body. Slack shows it in a notification, and a screen reader reads it in place of the blocks.
 
 A value Probe hides is `<secret:NAME>` or `<redacted>` in a note, which Slack would take for a link or a mention, so the action puts it in code, where it shows as it is. Slack takes at most 50 blocks, and 12000 characters in all the `markdown` blocks of a message, so the last notes of a longer message are left out, and a block says how many. A `text` too long to fit even without the notes fails the step.
 
@@ -99,7 +99,7 @@ A value Probe hides is `<secret:NAME>` or `<redacted>` in a note, which Slack wo
 | `rt` | Duration | How long the step took |
 | `status` | Integer | `0` |
 
-An error of Slack fails the step with what Slack answered: `channel_not_found` or `not_in_channel` of `chat.postMessage`, a 404 `no_service` of a webhook that was removed, or a 429 with the seconds Slack asks to wait. So does a post that Slack redirects with a 301 or a 302, which would be sent again as a GET. The URL of a webhook is not told in an error.
+An error of Slack fails the step with what Slack answered: `channel_not_found` or `not_in_channel` of `chat.postMessage`, a 404 `no_service` of a webhook that was removed, or a 429 with the seconds Slack asks to wait. So does a post that Slack redirects with a 301 or a 302, which would be sent again as a GET. The URL of a webhook is not told in an error, nor a path a redirect gave: an error names the host alone.
 
 The action does not return the notes it posts as `res.notes`, so that they are not left again for the steps after it.
 

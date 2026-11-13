@@ -25,16 +25,20 @@ func TestNoteBlockOfARun(t *testing.T) {
 	}
 }
 
-func TestFallbackEscapes(t *testing.T) {
-	notes, err := parseNotes([]any{entry("J", "S", "passed", "critical", "", "b")})
+func TestFallbackHoldsTheNotesShown(t *testing.T) {
+	notes, err := parseNotes([]any{
+		entry("J", "S", "passed", "critical", "Token <secret:TOKEN>", "a & b"),
+		entry("J", "T", "failed", "info", "", "c"),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := message{text: "Run <secret:RUN> & more", notes: notes}.fallback()
-	if got != "Run &lt;secret:RUN&gt; &amp; more\nThe run left 1 note: 1 critical." {
-		t.Errorf("fallback() = %q", got)
+	got := message{text: "Run <secret:RUN>", notes: notes}.fallback(1)
+	want := "Run &lt;secret:RUN&gt;\n\nThe run left 2 notes: 1 critical, 1 info.\n\ncritical: Token &lt;secret:TOKEN&gt; (J › S · passed)\na &amp; b\n\n1 more note is left out."
+	if got != want {
+		t.Errorf("fallback() =\n%q\nwant\n%q", got, want)
 	}
-	long := message{text: strings.Repeat("あ", maxFallback+10)}.fallback()
+	long := message{text: strings.Repeat("あ", maxFallback+10)}.fallback(0)
 	if n := len([]rune(long)); n != maxFallback || !strings.HasSuffix(long, "…") {
 		t.Errorf("fallback() of a long text is %d characters, want %d ending with …", n, maxFallback)
 	}
@@ -47,7 +51,7 @@ func TestBlocksKeepEveryNoteThatFits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blocks, err := message{notes: notes}.blocks()
+	blocks, _, err := message{notes: notes}.blocks()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,8 +60,8 @@ func TestBlocksKeepEveryNoteThatFits(t *testing.T) {
 		used += len([]rune(b["text"].(string)))
 	}
 	notes[0].body += strings.Repeat("x", maxMarkdown-used)
-	blocks, err = message{notes: notes}.blocks()
-	if err != nil || len(blocks) != 2 {
+	blocks, shown, err := message{notes: notes}.blocks()
+	if err != nil || len(blocks) != 2 || shown != 1 {
 		t.Errorf("blocks() = %d blocks, error %v; want the count and the note", len(blocks), err)
 	}
 }
@@ -67,7 +71,7 @@ func TestBlocksRefuseATextThatDoesNotFit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (message{text: strings.Repeat("x", maxMarkdown), notes: notes}).blocks(); err == nil || !strings.Contains(err.Error(), "with.text is too long") {
+	if _, _, err := (message{text: strings.Repeat("x", maxMarkdown), notes: notes}).blocks(); err == nil || !strings.Contains(err.Error(), "with.text is too long") {
 		t.Errorf("blocks() error = %v, want one saying with.text is too long", err)
 	}
 }

@@ -31,10 +31,10 @@ const (
 	maxMarkdown = 12000
 )
 
-// maxFallback bounds the plain text of a message, which Slack shows in a
-// notification. Slack cuts one longer than 40000 characters; this keeps it
-// to what a notification shows.
-const maxFallback = 3000
+// maxFallback bounds the plain text of a message, which Slack cuts when it
+// is longer than 40000 characters. The notes of the blocks hold at most
+// 12000, so it cuts only a text that is long by itself.
+const maxFallback = 40000
 
 // note is an entry of the notes context of Probe.
 type note struct {
@@ -145,7 +145,7 @@ type message struct {
 // counting the notes, and a block for each note. When they do not all fit
 // in what Slack takes, the last notes are left out, and a block says how
 // many. It fails when the text does not fit even without the notes.
-func (m message) blocks() ([]map[string]any, error) {
+func (m message) blocks() ([]map[string]any, int, error) {
 	var head []string
 	if t := strings.TrimSpace(m.text); t != "" {
 		head = append(head, escapeMasks(t))
@@ -193,7 +193,7 @@ func (m message) blocks() ([]map[string]any, error) {
 		}
 	}
 	if shown < 0 {
-		return nil, fmt.Errorf("with.text is too long: the message is more than the %d characters Slack takes even without the notes", maxMarkdown)
+		return nil, 0, fmt.Errorf("with.text is too long: the message is more than the %d characters Slack takes even without the notes", maxMarkdown)
 	}
 
 	var out []map[string]any
@@ -207,20 +207,34 @@ func (m message) blocks() ([]map[string]any, error) {
 	if l := leftOut(len(chunks) - shown); l != "" {
 		add(l)
 	}
-	return out, nil
+	return out, shown, nil
 }
 
-// fallback is the plain text of the message, which Slack shows in a
-// notification and where blocks cannot be shown. Slack reads &, < and > in
-// it as the start of an entity or a link, so they are escaped.
-func (m message) fallback() string {
-	s := strings.TrimSpace(m.text)
-	if len(m.notes) > 0 {
-		if s != "" {
-			s += "\n"
-		}
-		s += countLine(m.notes)
+// fallback is the plain text of the message, of the first shown notes as
+// the blocks show them. Slack shows it in a notification, and a screen
+// reader reads it in place of the blocks, so it holds what they do. Slack
+// reads &, < and > in it as the start of an entity or a link, so they are
+// escaped.
+func (m message) fallback(shown int) string {
+	var parts []string
+	if t := strings.TrimSpace(m.text); t != "" {
+		parts = append(parts, t)
 	}
+	if len(m.notes) > 0 {
+		parts = append(parts, countLine(m.notes))
+	}
+	for _, n := range m.notes[:shown] {
+		line := n.level
+		if t := strings.TrimSpace(n.title); t != "" {
+			line += ": " + strings.Join(strings.Fields(t), " ")
+		}
+		line += fmt.Sprintf(" (%s › %s · %s)\n%s", orDash(n.job), orDash(n.step), stepState(n), strings.TrimSpace(n.body))
+		parts = append(parts, line)
+	}
+	if left := len(m.notes) - shown; left > 0 {
+		parts = append(parts, plural(left, "more note is", "more notes are")+" left out.")
+	}
+	s := strings.Join(parts, "\n\n")
 	if r := []rune(s); len(r) > maxFallback {
 		s = string(r[:maxFallback-1]) + "…"
 	}

@@ -196,11 +196,11 @@ func (a *Action) post(ctx context.Context, r *request, guard actionrpc.Guard) (r
 		a.log.Info("no notes and no text, so nothing is posted")
 		return result{}, nil
 	}
-	blocks, err := r.msg.blocks()
+	blocks, shown, err := r.msg.blocks()
 	if err != nil {
 		return result{}, err
 	}
-	payload := map[string]any{"text": r.msg.fallback(), "blocks": blocks}
+	payload := map[string]any{"text": r.msg.fallback(shown), "blocks": blocks}
 	c := a.httpClient(guard)
 	if r.webhook != nil {
 		return a.postWebhook(ctx, c, r.webhook, payload, guard)
@@ -280,13 +280,7 @@ func send(ctx context.Context, c *http.Client, u *url.URL, token string, payload
 	}
 	resp, err := c.Do(req)
 	if err != nil {
-		// The error of net/http names the URL, which for a webhook is its
-		// secret, so it is told by its host alone.
-		var ue *url.Error
-		if errors.As(err, &ue) {
-			return 0, nil, fmt.Errorf("POST %s: %w", u.Host, ue.Err)
-		}
-		return 0, nil, err
+		return 0, nil, sendError(u, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
@@ -300,6 +294,39 @@ func send(ctx context.Context, c *http.Client, u *url.URL, token string, payload
 	return resp.StatusCode, body, err
 }
 
+// sendError is err of a request to u, told without what a URL holds past
+// its host. The URL of a webhook is its secret, and an error of net/http
+// can name it, or a path a redirect gave, at any depth, so only the kinds
+// of error known to name no more than a host are told.
+func sendError(u *url.URL, err error) error {
+	var refused *actionrpc.Refused
+	var op *net.OpError
+	var dns *net.DNSError
+	switch {
+	case errors.As(err, &refused):
+		// A refusal names the host alone, and is kept as one for the run
+		// to tell it from other errors.
+		return refused
+	case errors.Is(err, context.DeadlineExceeded):
+		return fmt.Errorf("POST %s: no answer within the timeout", u.Host)
+	case errors.As(err, &dns):
+		return fmt.Errorf("POST %s: the host cannot be found", u.Host)
+	case errors.As(err, &op):
+		return fmt.Errorf("POST %s: %s: %v", u.Host, op.Op, op.Err)
+	}
+	var redirect *redirectError
+	if errors.As(err, &redirect) {
+		return fmt.Errorf("POST %s: %s", u.Host, redirect.msg)
+	}
+	return fmt.Errorf("POST %s: the request failed", u.Host)
+}
+
+// redirectError is the error of a redirect the action does not follow,
+// which names no more than a host.
+type redirectError struct{ msg string }
+
+func (e *redirectError) Error() string { return e.msg }
+
 // httpClient is the client of the action, which follows a redirect only to
 // a host the guard allows, and only when the POST stays a POST.
 func (a *Action) httpClient(guard actionrpc.Guard) *http.Client {
@@ -309,12 +336,12 @@ func (a *Action) httpClient(guard actionrpc.Guard) *http.Client {
 	}
 	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 10 {
-			return errors.New("stopped after 10 redirects")
+			return &redirectError{"stopped after 10 redirects"}
 		}
 		// net/http sends a POST again as a GET after a 301 or a 302, which
 		// would post nothing.
 		if req.Method != via[0].Method {
-			return fmt.Errorf("Slack redirected the POST to %s, which would be sent as a %s", req.URL.Host, req.Method)
+			return &redirectError{fmt.Sprintf("Slack redirected the POST to %s, which would be sent as a %s", req.URL.Host, req.Method)}
 		}
 		return checkHost(guard, req.URL)
 	}
