@@ -19,7 +19,7 @@ func TestNoteBlockOfARun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "ℹ️ **info**\n\nTook `<secret:TOKEN>` and `<redacted>`\n\n_Load › Get `<secret:HOST>` · failed, run 3_"
+	want := "ℹ️ **info**\n\nTook `<secret:TOKEN>` and ``<redacted>``\n\n_Load › Get `<secret:HOST>` · failed, run 3_"
 	if got := noteBlock(notes[0]); got != want {
 		t.Errorf("noteBlock() =\n%q\nwant\n%q", got, want)
 	}
@@ -79,12 +79,15 @@ func TestBlocksRefuseATextThatDoesNotFit(t *testing.T) {
 func TestEscapeMasks(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
 		{"the password <secret:SHOP_PASSWORD> fails", "the password `<secret:SHOP_PASSWORD>` fails"},
-		{"sent `<secret:TOKEN>` and <redacted>", "sent `<secret:TOKEN>` and `<redacted>`"},
+		{"sent `<secret:TOKEN>` and <redacted>", "sent `<secret:TOKEN>` and ``<redacted>``"},
 		{"```\ntoken=<secret:TOKEN>\n```\n<secret:TOKEN>", "```\ntoken=<secret:TOKEN>\n```\n`<secret:TOKEN>`"},
-		{"\\` <redacted> x", "\\` `<redacted>` x"},
+		{"\\` <redacted> x", "\\` ``<redacted>`` x"},
 		{"<https://example.com|a link>", "<https://example.com|a link>"},
-		{"a `span\nwith <redacted>` and <redacted>", "a `span\nwith <redacted>` and `<redacted>`"},
-		{"an open `\n\n<redacted> `", "an open `\n\n`<redacted>` `"},
+		{"a `span\nwith <redacted>` and <redacted>", "a `span\nwith <redacted>` and ``<redacted>``"},
+		{"an open `\n\n<redacted> x", "an open `\n\n`<redacted>` x"},
+		{"a ` b <redacted>", "a ` b ``<redacted>``"},
+		{"C:\\<secret:DIR>", "C:\\\\`<secret:DIR>`"},
+		{"C:\\\\<secret:DIR>", "C:\\\\`<secret:DIR>`"},
 	} {
 		if got := escapeMasks(tc.in); got != tc.want {
 			t.Errorf("escapeMasks(%q) = %q, want %q", tc.in, got, tc.want)

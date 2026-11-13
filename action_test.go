@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -159,6 +160,16 @@ func TestTooManyRequests(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "429 Too Many Requests: it takes messages again in 30 seconds") {
 		t.Errorf("error = %v", err)
 	}
+
+	odd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", r.URL.Path)
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	t.Cleanup(odd.Close)
+	_, err = (&Action{}).Run(map[string]any{"webhook_url": odd.URL + "/services/T/B/secret", "text": "hi"})
+	if err == nil || strings.Contains(err.Error(), "secret") || !strings.Contains(err.Error(), "in a few seconds") {
+		t.Errorf("error = %v, want a Retry-After that is not seconds left out", err)
+	}
 }
 
 // TestManyNotesFitWhatSlackTakes checks that a message of more notes than
@@ -259,6 +270,24 @@ func TestErrorsDoNotTellTheWebhook(t *testing.T) {
 	_, _, err := (&Action{}).RunStep(actionrpc.Call{With: map[string]any{"webhook_url": moved.URL + fakeslack.WebhookPath, "text": "hi"}, Guard: actionrpc.Guard{AllowHosts: []string{u.Host}}})
 	if !actionrpc.IsRefused(err) || strings.Contains(err.Error(), "/services") {
 		t.Errorf("error = %v, want a refusal of the redirect without the webhook", err)
+	}
+}
+
+// TestSendErrorTellsTheHostAlone checks an error that names the path of a
+// webhook, as reading a body with a malformed trailer can give.
+func TestSendErrorTellsTheHostAlone(t *testing.T) {
+	u, _ := url.Parse("https://hooks.slack.com/services/T/B/secret")
+	err := sendError(u, errors.New(`malformed MIME header: missing colon: "Cannot POST /services/T/B/secret"`))
+	if err.Error() != "POST hooks.slack.com: the request failed" {
+		t.Errorf("sendError() = %v", err)
+	}
+}
+
+func TestLogLeavesOutTheWebhookAndTheToken(t *testing.T) {
+	with := map[string]any{"webhook_url": "https://hooks.slack.com/services/T/B/secret", "token": "xoxb-secret", "text": "hi"}
+	got := forLog(with)
+	if got["webhook_url"] != "<redacted>" || got["token"] != "<redacted>" || got["text"] != "hi" || with["token"] != "xoxb-secret" {
+		t.Errorf("forLog() = %v, from %v", got, with)
 	}
 }
 

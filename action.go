@@ -29,6 +29,24 @@ const DefaultAPIURL = "https://slack.com/api"
 // for probe check to report a key the action does not take.
 var params = []string{"webhook_url", "token", "channel", "text", "notes", "api_url", "timeout"}
 
+// seconds is a Retry-After of a number of seconds.
+var seconds = regexp.MustCompile(`^[0-9]{1,6}$`)
+
+// forLog is with without the URL of a webhook and the token, which the
+// log of the action would otherwise hold: Probe hides a value it knows to
+// be secret, and these it may not, when the workflow does not list them
+// under secrets, nor a part of them, when a long value is cut for the log.
+func forLog(with map[string]any) map[string]any {
+	out := make(map[string]any, len(with))
+	for k, v := range with {
+		if k == "webhook_url" || k == "token" {
+			v = "<redacted>"
+		}
+		out[k] = v
+	}
+	return out
+}
+
 // slackError is what an error of Slack looks like, such as no_service or
 // invalid_blocks.
 var slackError = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
@@ -56,7 +74,7 @@ func (a *Action) RunStep(call actionrpc.Call) (map[string]any, map[string]any, e
 	if a.log == nil {
 		a.log = hclog.NewNullLogger()
 	}
-	actionrpc.LogParams(a.log, "received request parameters", call.With)
+	actionrpc.LogParams(a.log, "received request parameters", forLog(call.With))
 
 	start := time.Now()
 	req, err := parseRequest(call.With)
@@ -295,9 +313,13 @@ func send(ctx context.Context, c *http.Client, u *url.URL, token string, payload
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err == nil && resp.StatusCode == http.StatusTooManyRequests {
+	if err != nil {
+		return resp.StatusCode, nil, sendError(u, err)
+	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		// Retry-After is told only as the number of seconds it should be.
 		after := resp.Header.Get("Retry-After")
-		if after == "" {
+		if !seconds.MatchString(after) {
 			after = "a few"
 		}
 		return resp.StatusCode, body, fmt.Errorf("Slack answered 429 Too Many Requests: it takes messages again in %s seconds", after)

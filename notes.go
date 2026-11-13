@@ -353,6 +353,10 @@ func escapeMasks(s string) string {
 // backslash, and closes with the next run of the same length; a run with no
 // such closer is text.
 func escapeOutsideSpans(line string) string {
+	// The span a mask is put in is of more backticks than any run of the
+	// paragraph, so that no run left unmatched before it can close it.
+	delim := strings.Repeat("`", longestRun(line)+1)
+	escape := func(s string) string { return escapeIn(s, delim) }
 	var b strings.Builder
 	text := 0
 	for i := 0; i < len(line); {
@@ -405,8 +409,45 @@ func closer(s string, i, n int) int {
 	return -1
 }
 
-// escape puts each mask of s in a code span, where Slack shows it as it
-// is rather than take it for a link or a mention.
-func escape(s string) string {
-	return masks.ReplaceAllString(s, "`<$1>`")
+// escapeIn puts each mask of s in a code span delimited by delim, where
+// Slack shows it as it is rather than take it for a link or a mention. A
+// backslash right before a mask would escape the opening backtick, so it is
+// escaped itself, and shown.
+func escapeIn(s, delim string) string {
+	var b strings.Builder
+	last := 0
+	for _, m := range masks.FindAllStringIndex(s, -1) {
+		before := s[last:m[0]]
+		if trailingBackslashes(before)%2 == 1 {
+			before += "\\"
+		}
+		b.WriteString(before)
+		b.WriteString(delim + s[m[0]:m[1]] + delim)
+		last = m[1]
+	}
+	b.WriteString(s[last:])
+	return b.String()
+}
+
+func trailingBackslashes(s string) int {
+	n := 0
+	for n < len(s) && s[len(s)-1-n] == '\\' {
+		n++
+	}
+	return n
+}
+
+// longestRun is the length of the longest run of backticks in s.
+func longestRun(s string) int {
+	longest := 0
+	for i := 0; i < len(s); {
+		if s[i] != '`' {
+			i++
+			continue
+		}
+		n := ticks(s, i)
+		longest = max(longest, n)
+		i += n
+	}
+	return longest
 }
