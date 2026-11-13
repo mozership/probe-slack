@@ -38,6 +38,10 @@ func TestFallbackHoldsTheNotesShown(t *testing.T) {
 	if got != want {
 		t.Errorf("fallback() =\n%q\nwant\n%q", got, want)
 	}
+	amps := message{text: strings.Repeat("&", maxFallback)}.fallback(0)
+	if n := len([]rune(amps)); n > maxFallback || !strings.HasSuffix(amps, "&amp;…") {
+		t.Errorf("fallback() of a text of & is %d characters ending %q, want at most %d with whole entities", n, amps[len(amps)-12:], maxFallback)
+	}
 	long := message{text: strings.Repeat("あ", maxFallback+10)}.fallback(0)
 	if n := len([]rune(long)); n != maxFallback || !strings.HasSuffix(long, "…") {
 		t.Errorf("fallback() of a long text is %d characters, want %d ending with …", n, maxFallback)

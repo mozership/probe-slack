@@ -234,11 +234,17 @@ func (m message) fallback(shown int) string {
 	if left := len(m.notes) - shown; left > 0 {
 		parts = append(parts, plural(left, "more note is", "more notes are")+" left out.")
 	}
-	s := strings.Join(parts, "\n\n")
+	s := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(strings.Join(parts, "\n\n"))
+	// It is cut after the escaping, which lengthens it, and not inside an
+	// entity.
 	if r := []rune(s); len(r) > maxFallback {
-		s = string(r[:maxFallback-1]) + "…"
+		s = string(r[:maxFallback-1])
+		if i := strings.LastIndexByte(s, '&'); i >= 0 && !strings.Contains(s[i:], ";") {
+			s = s[:i]
+		}
+		s += "…"
 	}
-	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
+	return s
 }
 
 // noteBlock writes n: its emoji and title, its body, and a line naming its
