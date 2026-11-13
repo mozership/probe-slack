@@ -1,0 +1,12 @@
+# probe-slack built from this checkout, for the workflows of e2e. Probe
+# resolves an action before the first job starts, so the executable is built
+# before probe runs:
+#
+#   go build -o e2e/action/probe-slack . && probe e2e/workflow.yml
+name: slack
+description: Post a message to a Slack channel, of the notes of a run or a text
+guard: [read-only, allow-host]
+params: [webhook_url, token, channel, text, notes, api_url, timeout]
+runs:
+  using: binary
+  path: probe-slack

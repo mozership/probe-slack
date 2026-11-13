@@ -1,0 +1,73 @@
+name: Test
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test -race ./...
+
+  # The tests above call the action in the process. This one runs it
+  # through Probe: one job leaves notes, and another posts them to a
+  # stand-in for Slack.
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      SHOP_PASSWORD: hunter2-e2e
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version-file: go.mod
+      # Probe resolves the action before the first job of a workflow, so it
+      # is built first.
+      - run: go build -o e2e/action/probe-slack .
+      # The first step of the second job of e2e/workflow.yml waits for it
+      # to listen.
+      - name: Start the stand-in for Slack
+        run: |
+          go build -o e2e/server/server ./e2e/server
+          e2e/server/server > "$RUNNER_TEMP/server.txt" 2>&1 &
+      # The probe the e2e workflows run, the first with the notes context.
+      # The action checks it against the digest of its release and adds it
+      # to PATH.
+      - name: Install Probe
+        uses: mozership/probe-action@831b8b6c6aa0c8a61aa75b58f36a08da5c579e83 # v1.3.0
+        with:
+          install-only: true
+          version: v1.32.0
+      - run: probe check e2e/workflow.yml
+      - run: probe e2e/workflow.yml
+      - name: No message holds the secret
+        run: |
+          curl -fsS http://127.0.0.1:18083/e2e/messages > "$RUNNER_TEMP/messages.json"
+          ! grep -F "$SHOP_PASSWORD" "$RUNNER_TEMP/messages.json"
+      # The post of guard.yml is refused, which ends the run with exit
+      # status 2.
+      - name: A post is refused under --read-only
+        run: |
+          status=0
+          probe --read-only e2e/guard.yml > "$RUNNER_TEMP/read-only.txt" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/read-only.txt"
+          test "$status" -eq 2
+          grep -F 'refused: the run is read-only, and posting to Slack writes' "$RUNNER_TEMP/read-only.txt"
+      - name: A host the run does not allow is refused
+        run: |
+          status=0
+          probe --allow-host hooks.slack.com e2e/guard.yml > "$RUNNER_TEMP/allow-host.txt" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/allow-host.txt"
+          test "$status" -eq 2
+          grep -F 'refused: the host 127.0.0.1:18083 is not one the run allows' "$RUNNER_TEMP/allow-host.txt"
+      - name: What the server logged
+        if: always()
+        run: cat "$RUNNER_TEMP/server.txt"

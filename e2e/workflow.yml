@@ -1,0 +1,116 @@
+# The end-to-end tests: notes left by one job, posted to Slack by
+# probe-slack in another, against the stand-in for Slack of e2e/server. Run
+# it from the repository root, with the server listening and the action
+# built first, as Probe resolves it before the first job:
+#
+#   go run ./e2e/server &
+#   go build -o e2e/action/probe-slack . && probe e2e/workflow.yml
+#
+# The notes context needs Probe v1.32.0 or later. The server keeps what it
+# is sent in memory, so the last step reads the messages of this run from
+# the end of its list.
+name: probe-slack against a stand-in for Slack
+
+# The action as it was just built, by the name a workflow would give a
+# released one.
+actions:
+  slack: ./action
+
+# SHOP_PASSWORD is set by the run: a secret is one of the environment.
+secrets:
+  - FAKE_SLACK_TOKEN
+  - SHOP_PASSWORD
+
+vars:
+  base: "{{FAKE_SLACK_URL ?? 'http://127.0.0.1:18083'}}"
+  token: "{{FAKE_SLACK_TOKEN ?? 'xoxb-e2e'}}"
+  # A secret the notes tell, which Probe hides in them.
+  password: "{{SHOP_PASSWORD ?? 'hunter2-e2e'}}"
+
+jobs:
+# The notes come from hello, which returns what it is given in with as res,
+# as an action that leaves notes would return them.
+- name: Agent
+  id: agent
+  steps:
+  - name: A new user signs up
+    uses: hello
+    with:
+      notes:
+      - level: critical
+        title: The form takes no + in an address
+        body: |
+          Signing up with `qa+1@example.com` and the password {{vars.password}}
+          shows "Enter a valid email address".
+      - level: info
+        body: The dashboard took 3s to show.
+    test: status == 0
+
+  - name: A shopper checks out
+    uses: hello
+    with:
+      notes:
+      - level: warning
+        title: The total updates late
+        body: The total shows the old price for a second after a coupon.
+
+- name: Notes to Slack
+  id: post
+  needs: [agent]
+  always: true
+  steps:
+  - name: Wait for the server
+    uses: http
+    with:
+      url: "{{vars.base}}/e2e/messages"
+      method: GET
+    retry: {max_attempts: 30, interval: 1s}
+    test: res.code == 200
+
+  - name: Every note, by the webhook
+    uses: slack
+    with:
+      webhook_url: "{{vars.base}}/services/T000/B000/e2e"
+      text: Notes of the e2e run
+      notes: "{{ notes }}"
+    test: status == 0 && res.posted && res.code == 200
+
+  - name: The critical notes, with a token to another channel
+    uses: slack
+    with:
+      token: "{{vars.token}}"
+      channel: "#C0ALERTS"
+      api_url: "{{vars.base}}/api"
+      notes: "{{ filter(notes, .level == 'critical') }}"
+    test: status == 0 && res.posted && res.channel == "C0ALERTS" && res.ts != ""
+
+  - name: No notes and no text post nothing
+    uses: slack
+    with:
+      webhook_url: "{{vars.base}}/services/T000/B000/e2e"
+      notes: []
+    test: status == 0 && !res.posted
+
+  - name: A text alone is posted
+    uses: slack
+    with:
+      webhook_url: "{{vars.base}}/services/T000/B000/e2e"
+      text: The e2e run is over
+    test: status == 0 && res.posted
+
+  - name: The messages hold the notes, with the secret hidden
+    uses: http
+    with:
+      url: "{{vars.base}}/e2e/messages"
+      method: GET
+    test: |
+      res.code == 200 && len(res.body) >= 3 &&
+      res.body[-3].channel == "C0NOTES" && res.body[-3].via == "webhook" &&
+      res.body[-3].blocks[0].text == "Notes of the e2e run" &&
+      res.body[-3].blocks[1].text == "**The run left 3 notes: 1 critical, 1 warning, 1 info.**" &&
+      res.body[-3].blocks[2].text contains "the password `<secret:SHOP_PASSWORD>`" &&
+      res.body[-3].blocks[2].text contains "_Agent › A new user signs up · passed_" &&
+      res.body[-3].blocks[4].text contains "_Agent › A shopper checks out · passed_" &&
+      res.body[-2].channel == "C0ALERTS" && res.body[-2].via == "token" &&
+      len(res.body[-2].blocks) == 2 &&
+      res.body[-1].blocks[0].text == "The e2e run is over"
