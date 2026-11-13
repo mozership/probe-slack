@@ -2,8 +2,11 @@ name: slack
 description: Post a message to a Slack channel, of the notes of a run or a text
 guard: [read-only, allow-host]
 params: [webhook_url, token, channel, text, notes, api_url, timeout]
-# The release workflow puts the tag of each release here, and its digests
-# under checksums; v0.0.0 stands for the tag until the first.
 runs:
   using: binary
-  url: https://github.com/mozership/probe-slack/releases/download/v0.0.0/probe-slack_{os}_{arch}
+  url: https://github.com/mozership/probe-slack/releases/download/v0.1.0/probe-slack_{os}_{arch}
+  checksums:
+    darwin_amd64: "89897874dcb6762271f38f7cd32363aadf4a1f26886200e5f03b8794d2b79c74"
+    darwin_arm64: "ada1cf976095649a26001b422d60995fce45ae68979e577329a28e84d373a5ac"
+    linux_amd64: "a97c60bf3f0153e8ac5705c38344ccab23df61f41e2d0ce52209028ab8b4665b"
+    linux_arm64: "9b0a930367bc0b699128716d2aa381d2ea54a84d06acd5b9be6e0d9a6c5aa114"
