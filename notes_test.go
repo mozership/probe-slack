@@ -83,6 +83,8 @@ func TestEscapeMasks(t *testing.T) {
 		{"```\ntoken=<secret:TOKEN>\n```\n<secret:TOKEN>", "```\ntoken=<secret:TOKEN>\n```\n`<secret:TOKEN>`"},
 		{"\\` <redacted> x", "\\` `<redacted>` x"},
 		{"<https://example.com|a link>", "<https://example.com|a link>"},
+		{"a `span\nwith <redacted>` and <redacted>", "a `span\nwith <redacted>` and `<redacted>`"},
+		{"an open `\n\n<redacted> `", "an open `\n\n`<redacted>` `"},
 	} {
 		if got := escapeMasks(tc.in); got != tc.want {
 			t.Errorf("escapeMasks(%q) = %q, want %q", tc.in, got, tc.want)

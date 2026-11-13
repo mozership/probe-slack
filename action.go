@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -27,6 +28,10 @@ const DefaultAPIURL = "https://slack.com/api"
 // params are the keys the action takes in with. action.yml declares them,
 // for probe check to report a key the action does not take.
 var params = []string{"webhook_url", "token", "channel", "text", "notes", "api_url", "timeout"}
+
+// slackError is what an error of Slack looks like, such as no_service or
+// invalid_blocks.
+var slackError = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
 // keeps are the kinds of guard the action keeps to, as action.yml declares
 // them: it posts only when the run is not read-only, and connects only to a
@@ -218,7 +223,13 @@ func (a *Action) postWebhook(ctx context.Context, c *http.Client, u *url.URL, pa
 		return res, err
 	}
 	if code != http.StatusOK {
-		return res, fmt.Errorf("the webhook answered %d %s: %s", code, http.StatusText(code), strings.TrimSpace(string(body)))
+		// A server can answer with the path it was sent, which is the
+		// secret of the webhook, so only an error of Slack, such as
+		// no_service, is told.
+		if id := strings.TrimSpace(string(body)); slackError.MatchString(id) {
+			return res, fmt.Errorf("the webhook answered %d %s: %s", code, http.StatusText(code), id)
+		}
+		return res, fmt.Errorf("the webhook answered %d %s", code, http.StatusText(code))
 	}
 	res.posted = true
 	return res, nil

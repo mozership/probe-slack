@@ -309,10 +309,22 @@ func escapeMasks(s string) string {
 	lines := strings.Split(s, "\n")
 	// open is the fence of the code block the line is in, or empty.
 	var open string
+	// para is where the paragraph the line is in starts, or -1. A code
+	// span can go on over lines of a paragraph, so a paragraph is escaped
+	// as one text.
+	para := -1
+	flush := func(end int) {
+		if para >= 0 {
+			text := escapeOutsideSpans(strings.Join(lines[para:end], "\n"))
+			copy(lines[para:end], strings.Split(text, "\n"))
+			para = -1
+		}
+	}
 	for i, line := range lines {
 		if m := fence.FindStringSubmatch(line); m != nil {
 			switch {
 			case open == "" && !(m[1][0] == '`' && strings.Contains(m[2], "`")):
+				flush(i)
 				open = m[1]
 				continue
 			case open != "" && m[1][0] == open[0] && len(m[1]) >= len(open) && strings.TrimSpace(m[2]) == "":
@@ -323,12 +335,20 @@ func escapeMasks(s string) string {
 		if open != "" {
 			continue
 		}
-		lines[i] = escapeOutsideSpans(line)
+		if strings.TrimSpace(line) == "" {
+			flush(i)
+			continue
+		}
+		if para < 0 {
+			para = i
+		}
 	}
+	flush(len(lines))
 	return strings.Join(lines, "\n")
 }
 
-// escapeOutsideSpans escapes the masks of line outside its code spans. A
+// escapeOutsideSpans escapes the masks of a paragraph outside its code
+// spans. A
 // code span opens with a run of backticks that is not escaped by a
 // backslash, and closes with the next run of the same length; a run with no
 // such closer is text.

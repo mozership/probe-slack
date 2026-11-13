@@ -234,10 +234,15 @@ func TestErrorsDoNotTellTheWebhook(t *testing.T) {
 		w.WriteHeader(http.StatusTemporaryRedirect)
 	}))
 	t.Cleanup(bad.Close)
+	echo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("Cannot POST " + r.URL.Path))
+	}))
+	t.Cleanup(echo.Close)
 	closed := httptest.NewServer(http.NotFoundHandler())
 	closedURL := closed.URL
 	closed.Close()
-	for _, hook := range []string{bad.URL + "/services/T/B/secret", closedURL + "/services/T/B/secret"} {
+	for _, hook := range []string{bad.URL + "/services/T/B/secret", echo.URL + "/services/T/B/secret", closedURL + "/services/T/B/secret"} {
 		_, err := (&Action{}).Run(map[string]any{"webhook_url": hook, "text": "hi"})
 		if err == nil || strings.Contains(err.Error(), "secret") || strings.Contains(err.Error(), "/services") {
 			t.Errorf("error = %v, want one without the webhook", err)
