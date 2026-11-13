@@ -1,0 +1,4 @@
+/probe-slack
+/dist/
+/e2e/action/probe-slack
+/e2e/server/server
