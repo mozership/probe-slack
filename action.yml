@@ -1,0 +1,9 @@
+name: slack
+description: Post a message to a Slack channel, of the notes of a run or a text
+guard: [read-only, allow-host]
+params: [webhook_url, token, channel, text, notes, api_url, timeout]
+# The release workflow puts the tag of each release here, and its digests
+# under checksums; v0.0.0 stands for the tag until the first.
+runs:
+  using: binary
+  url: https://github.com/mozership/probe-slack/releases/download/v0.0.0/probe-slack_{os}_{arch}

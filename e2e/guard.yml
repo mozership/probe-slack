@@ -1,0 +1,20 @@
+# Run under --read-only, where the post is refused before any request, and
+# under --allow-host without the host of the stand-in, where it is refused
+# too.
+name: probe-slack under a guard
+
+actions:
+  slack: ./action
+
+vars:
+  base: "{{FAKE_SLACK_URL ?? 'http://127.0.0.1:18083'}}"
+
+jobs:
+- name: Under a guard
+  steps:
+  - name: A message is posted
+    uses: slack
+    with:
+      webhook_url: "{{vars.base}}/services/T000/B000/e2e"
+      text: Under a guard
+    test: status == 0
