@@ -108,6 +108,21 @@ func TestNoteBlockEscapesMasks(t *testing.T) {
 	}
 }
 
+// TestNoteBlockEscapesMasksInTables checks that a placeholder between the
+// backticks of two cells of a table is put in code, as a table cuts its row
+// into cells before reading code spans, and that one in a code span of a
+// cell is left alone.
+func TestNoteBlockEscapesMasksInTables(t *testing.T) {
+	notes, err := parseNotes([]any{entry("J", "S", "passed", "info", "", "| Step | Value |\n|---|---|\n| login | `<secret:TOKEN>` |\n| `x | <redacted> | y` | z |")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "ℹ️ **info**\n\n| Step | Value |\n|---|---|\n| login | `<secret:TOKEN>` |\n| `x | ``<redacted>`` | y` | z |\n\n_J › S · passed_"
+	if got := noteBlock(notes[0]); got != want {
+		t.Errorf("noteBlock() =\n%q\nwant\n%q", got, want)
+	}
+}
+
 func TestParseNotesRefuses(t *testing.T) {
 	for _, tc := range []struct {
 		v    any
