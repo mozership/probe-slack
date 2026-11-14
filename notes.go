@@ -2,26 +2,21 @@ package main
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 	"unicode/utf8"
-)
 
-// Levels of a note, as Probe gives them in the notes context.
-const (
-	levelInfo     = "info"
-	levelWarning  = "warning"
-	levelCritical = "critical"
+	"github.com/mozership/probe/actionrpc"
+	"github.com/mozership/probe/mask/markdown"
 )
 
 // levels are the levels in the order the line counting them names them.
-var levels = []string{levelCritical, levelWarning, levelInfo}
+var levels = []string{actionrpc.NoteCritical, actionrpc.NoteWarning, actionrpc.NoteInfo}
 
 // emojis mark a note of each level.
 var emojis = map[string]string{
-	levelCritical: "🚨",
-	levelWarning:  "⚠️",
-	levelInfo:     "ℹ️",
+	actionrpc.NoteCritical: "🚨",
+	actionrpc.NoteWarning:  "⚠️",
+	actionrpc.NoteInfo:     "ℹ️",
 }
 
 // Slack takes at most maxBlocks blocks in a message, and maxMarkdown
@@ -36,109 +31,20 @@ const (
 // 12000, so it cuts only a text that is long by itself.
 const maxFallback = 40000
 
-// note is an entry of the notes context of Probe.
-type note struct {
-	job, jobID, step string
-	index            int
-	status           string
-	level            string
-	title, body      string
-	// run is the run of a job with repeat the note is of, or 0.
-	run int
-}
-
 // parseNotes reads with.notes, a list of entries of the notes context.
-func parseNotes(v any) ([]note, error) {
-	list, ok := v.([]any)
-	if !ok {
-		return nil, fmt.Errorf(`with.notes must be a list of notes, such as "{{ notes }}", not %T`, v)
+func parseNotes(v any) ([]actionrpc.Note, error) {
+	notes, err := actionrpc.ParseNotes(v)
+	if err != nil {
+		// The error starts with notes, as notes[1]: body is missing.
+		return nil, fmt.Errorf("with.%w", err)
 	}
-	out := make([]note, 0, len(list))
-	for i, e := range list {
-		m, ok := e.(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("with.notes[%d] must be an entry of notes, not %T", i, e)
-		}
-		n, err := parseNote(m)
-		if err != nil {
-			return nil, fmt.Errorf("with.notes[%d]: %w", i, err)
-		}
-		out = append(out, n)
-	}
-	return out, nil
-}
-
-func parseNote(m map[string]any) (note, error) {
-	var n note
-	str := func(key string, required bool) (string, error) {
-		v, ok := m[key]
-		if !ok || v == nil {
-			if required {
-				return "", fmt.Errorf("%s is missing", key)
-			}
-			return "", nil
-		}
-		s, ok := v.(string)
-		if !ok {
-			return "", fmt.Errorf("%s must be a string, not %T", key, v)
-		}
-		return s, nil
-	}
-	var err error
-	if n.level, err = str("level", true); err != nil {
-		return n, err
-	}
-	if _, ok := emojis[n.level]; !ok {
-		return n, fmt.Errorf("level %q is not one of info, warning or critical", n.level)
-	}
-	if n.body, err = str("body", true); err != nil {
-		return n, err
-	}
-	if n.title, err = str("title", false); err != nil {
-		return n, err
-	}
-	if n.job, err = str("job", false); err != nil {
-		return n, err
-	}
-	if n.jobID, err = str("job_id", false); err != nil {
-		return n, err
-	}
-	if n.step, err = str("step", false); err != nil {
-		return n, err
-	}
-	if n.status, err = str("status", false); err != nil {
-		return n, err
-	}
-	if n.index, err = number(m, "index"); err != nil {
-		return n, err
-	}
-	if n.run, err = number(m, "run"); err != nil {
-		return n, err
-	}
-	return n, nil
-}
-
-// number reads a whole number of m, 0 when it is absent.
-func number(m map[string]any, key string) (int, error) {
-	switch v := m[key].(type) {
-	case nil:
-		return 0, nil
-	case int:
-		return v, nil
-	case int64:
-		return int(v), nil
-	case float64:
-		if v == float64(int(v)) {
-			return int(v), nil
-		}
-	}
-	return 0, fmt.Errorf("%s must be a whole number, not %v", key, m[key])
+	return notes, nil
 }
 
 // message is what the action posts: text the workflow wrote, and the notes.
 type message struct {
 	text  string
-	notes []note
+	notes []actionrpc.Note
 }
 
 // blocks writes the message as Block Kit markdown blocks: the text, a line
@@ -224,11 +130,11 @@ func (m message) fallback(shown int) string {
 		parts = append(parts, countLine(m.notes))
 	}
 	for _, n := range m.notes[:shown] {
-		line := n.level
-		if t := strings.TrimSpace(n.title); t != "" {
+		line := n.Level
+		if t := strings.TrimSpace(n.Title); t != "" {
 			line += ": " + strings.Join(strings.Fields(t), " ")
 		}
-		line += fmt.Sprintf(" (%s › %s · %s)\n%s", orDash(n.job), orDash(n.step), stepState(n), strings.TrimSpace(n.body))
+		line += fmt.Sprintf(" (%s › %s · %s)\n%s", orDash(n.Job), orDash(n.Step), stepState(n), strings.TrimSpace(n.Body))
 		parts = append(parts, line)
 	}
 	if left := len(m.notes) - shown; left > 0 {
@@ -249,23 +155,25 @@ func (m message) fallback(shown int) string {
 
 // noteBlock writes n: its emoji and title, its body, and a line naming its
 // job, its step, and the status of the step.
-func noteBlock(n note) string {
+func noteBlock(n actionrpc.Note) string {
 	var b strings.Builder
-	b.WriteString(emojis[n.level] + " **" + n.level)
-	if t := strings.TrimSpace(n.title); t != "" {
-		b.WriteString(" · " + escapeMasks(strings.Join(strings.Fields(t), " ")))
+	head := "**" + n.Level
+	if t := strings.TrimSpace(n.Title); t != "" {
+		head += " · " + strings.Join(strings.Fields(t), " ")
 	}
-	b.WriteString("**\n\n")
-	b.WriteString(escapeMasks(strings.TrimRight(n.body, "\n")))
-	fmt.Fprintf(&b, "\n\n_%s › %s · %s_", escapeMasks(orDash(n.job)), escapeMasks(orDash(n.step)), stepState(n))
+	// The names are escaped in the line they are written in, rather than
+	// by themselves, where four spaces before one would make it code.
+	b.WriteString(emojis[n.Level] + " " + escapeMasks(head+"**") + "\n\n")
+	b.WriteString(escapeMasks(strings.TrimRight(n.Body, "\n")))
+	b.WriteString("\n\n" + escapeMasks(fmt.Sprintf("_%s › %s · %s_", orDash(n.Job), orDash(n.Step), stepState(n))))
 	return b.String()
 }
 
 // countLine says how many notes there are of each level.
-func countLine(notes []note) string {
+func countLine(notes []actionrpc.Note) string {
 	count := map[string]int{}
 	for _, n := range notes {
-		count[n.level]++
+		count[n.Level]++
 	}
 	var parts []string
 	for _, l := range levels {
@@ -277,10 +185,10 @@ func countLine(notes []note) string {
 }
 
 // stepState is the status of the step of n, with its run.
-func stepState(n note) string {
-	s := orDash(n.status)
-	if n.run > 0 {
-		s += fmt.Sprintf(", run %d", n.run)
+func stepState(n actionrpc.Note) string {
+	s := orDash(n.Status)
+	if n.Run > 0 {
+		s += fmt.Sprintf(", run %d", n.Run)
 	}
 	return s
 }
@@ -299,173 +207,9 @@ func plural(n int, one, many string) string {
 	return fmt.Sprintf("%d %s", n, many)
 }
 
-// masks are what Probe writes in place of a value it hides: <secret:NAME>
-// and <redacted>.
-var masks = regexp.MustCompile(`<(secret:[A-Za-z_][A-Za-z0-9_]*|redacted)>`)
-
-// fence opens or closes a fenced code block: three or more backticks or
-// tildes, indented by at most three spaces, and what follows them.
-var fence = regexp.MustCompile("^ {0,3}(`{3,}|~{3,})(.*)$")
-
-// escapeMasks puts the masks in s in code spans, as Slack would take them
-// for links or mentions, so that a reader sees where a value was hidden. In
-// a code block or a code span a mask is shown as it is, so it is left alone
-// there.
+// escapeMasks puts the placeholders of the values Probe hides in s,
+// <secret:NAME> and <redacted>, in code spans, as Slack would take them for
+// links or mentions, so that a reader sees where a value was hidden.
 func escapeMasks(s string) string {
-	lines := strings.Split(s, "\n")
-	// open is the fence of the code block the line is in, or empty.
-	var open string
-	// para is where the paragraph the line is in starts, or -1. A code
-	// span can go on over lines of a paragraph, so a paragraph is escaped
-	// as one text.
-	para := -1
-	flush := func(end int) {
-		if para >= 0 {
-			text := escapeOutsideSpans(strings.Join(lines[para:end], "\n"))
-			copy(lines[para:end], strings.Split(text, "\n"))
-			para = -1
-		}
-	}
-	for i, line := range lines {
-		if m := fence.FindStringSubmatch(line); m != nil {
-			switch {
-			case open == "" && !(m[1][0] == '`' && strings.Contains(m[2], "`")):
-				flush(i)
-				open = m[1]
-				continue
-			case open != "" && m[1][0] == open[0] && len(m[1]) >= len(open) && strings.TrimSpace(m[2]) == "":
-				open = ""
-				continue
-			}
-		}
-		if open != "" {
-			continue
-		}
-		if strings.TrimSpace(line) == "" {
-			flush(i)
-			continue
-		}
-		if para < 0 {
-			para = i
-		}
-	}
-	flush(len(lines))
-	return strings.Join(lines, "\n")
-}
-
-// escapeOutsideSpans escapes the masks of a paragraph outside its code
-// spans. A
-// code span opens with a run of backticks that is not escaped by a
-// backslash, and closes with the next run of the same length; a run with no
-// such closer is text.
-func escapeOutsideSpans(line string) string {
-	// The span a mask is put in is of more backticks than any run of the
-	// paragraph, so that no run left unmatched before it can close it.
-	delim := strings.Repeat("`", longestRun(line)+1)
-	var b strings.Builder
-	text := 0
-	// escape escapes the text from text to end, which a code span may close
-	// right before it and open right after it.
-	escape := func(end int) string {
-		return escapeIn(line[text:end], delim, text > 0 && line[text-1] == '`', end < len(line) && line[end] == '`')
-	}
-	for i := 0; i < len(line); {
-		if line[i] == '\\' {
-			// A backslash makes the character after it text, so an escaped
-			// backtick opens no code span.
-			i += 2
-			continue
-		}
-		if line[i] != '`' {
-			i++
-			continue
-		}
-		n := ticks(line, i)
-		end := closer(line, i+n, n)
-		if end < 0 {
-			i += n
-			continue
-		}
-		b.WriteString(escape(i))
-		b.WriteString(line[i : end+n])
-		i, text = end+n, end+n
-	}
-	b.WriteString(escape(len(line)))
-	return b.String()
-}
-
-// ticks is the length of the run of backticks at i.
-func ticks(s string, i int) int {
-	n := 0
-	for i+n < len(s) && s[i+n] == '`' {
-		n++
-	}
-	return n
-}
-
-// closer is where the first run of exactly n backticks from i starts, or -1.
-func closer(s string, i, n int) int {
-	for i < len(s) {
-		if s[i] != '`' {
-			i++
-			continue
-		}
-		run := ticks(s, i)
-		if run == n {
-			return i
-		}
-		i += run
-	}
-	return -1
-}
-
-// escapeIn puts each mask of s in a code span delimited by delim, where
-// Slack shows it as it is rather than take it for a link or a mention. A
-// backslash right before a mask would escape the opening backtick, so it is
-// escaped itself, and shown. A mask at the start of s after a code span,
-// or at its end before one, is kept apart from it by a space, as the
-// backticks of the two would make one run.
-func escapeIn(s, delim string, tickBefore, tickAfter bool) string {
-	var b strings.Builder
-	last := 0
-	for _, m := range masks.FindAllStringIndex(s, -1) {
-		before := s[last:m[0]]
-		if trailingBackslashes(before)%2 == 1 {
-			before += "\\"
-		}
-		if m[0] == 0 && tickBefore {
-			before = " "
-		}
-		b.WriteString(before)
-		b.WriteString(delim + s[m[0]:m[1]] + delim)
-		if m[1] == len(s) && tickAfter {
-			b.WriteString(" ")
-		}
-		last = m[1]
-	}
-	b.WriteString(s[last:])
-	return b.String()
-}
-
-func trailingBackslashes(s string) int {
-	n := 0
-	for n < len(s) && s[len(s)-1-n] == '\\' {
-		n++
-	}
-	return n
-}
-
-// longestRun is the length of the longest run of backticks in s.
-func longestRun(s string) int {
-	longest := 0
-	for i := 0; i < len(s); {
-		if s[i] != '`' {
-			i++
-			continue
-		}
-		n := ticks(s, i)
-		longest = max(longest, n)
-		i += n
-	}
-	return longest
+	return markdown.Escape(s, markdown.AsCode)
 }
