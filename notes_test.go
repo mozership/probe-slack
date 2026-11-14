@@ -25,6 +25,20 @@ func TestNoteBlockOfARun(t *testing.T) {
 	}
 }
 
+// TestNoteBlockEscapesMasksInIndentedNames checks that a name escaped by
+// itself would be code, as one of four spaces before it, or a title that
+// opens a fence, is escaped as the line it is shown in.
+func TestNoteBlockEscapesMasksInIndentedNames(t *testing.T) {
+	notes, err := parseNotes([]any{entry("    Load <secret:HOST>", "    Get <redacted>", "passed", "info", "``` Token <secret:TOKEN>", "b")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "ℹ️ **info · ``` Token `<secret:TOKEN>`**\n\nb\n\n_    Load `<secret:HOST>` ›     Get `<redacted>` · passed_"
+	if got := noteBlock(notes[0]); got != want {
+		t.Errorf("noteBlock() =\n%q\nwant\n%q", got, want)
+	}
+}
+
 func TestFallbackHoldsTheNotesShown(t *testing.T) {
 	notes, err := parseNotes([]any{
 		entry("J", "S", "passed", "critical", "Token <secret:TOKEN>", "a & b"),

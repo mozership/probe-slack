@@ -157,13 +157,15 @@ func (m message) fallback(shown int) string {
 // job, its step, and the status of the step.
 func noteBlock(n actionrpc.Note) string {
 	var b strings.Builder
-	b.WriteString(emojis[n.Level] + " **" + n.Level)
+	head := "**" + n.Level
 	if t := strings.TrimSpace(n.Title); t != "" {
-		b.WriteString(" · " + escapeMasks(strings.Join(strings.Fields(t), " ")))
+		head += " · " + strings.Join(strings.Fields(t), " ")
 	}
-	b.WriteString("**\n\n")
+	// The names are escaped in the line they are written in, rather than
+	// by themselves, where four spaces before one would make it code.
+	b.WriteString(emojis[n.Level] + " " + escapeMasks(head+"**") + "\n\n")
 	b.WriteString(escapeMasks(strings.TrimRight(n.Body, "\n")))
-	fmt.Fprintf(&b, "\n\n_%s › %s · %s_", escapeMasks(orDash(n.Job)), escapeMasks(orDash(n.Step)), stepState(n))
+	b.WriteString("\n\n" + escapeMasks(fmt.Sprintf("_%s › %s · %s_", orDash(n.Job), orDash(n.Step), stepState(n))))
 	return b.String()
 }
 
