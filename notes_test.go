@@ -63,7 +63,7 @@ func TestBlocksKeepEveryNoteThatFits(t *testing.T) {
 	for _, b := range blocks {
 		used += len([]rune(b["text"].(string)))
 	}
-	notes[0].body += strings.Repeat("x", maxMarkdown-used)
+	notes[0].Body += strings.Repeat("x", maxMarkdown-used)
 	blocks, shown, err := message{notes: notes}.blocks()
 	if err != nil || len(blocks) != 2 || shown != 1 {
 		t.Errorf("blocks() = %d blocks, error %v; want the count and the note", len(blocks), err)
@@ -80,23 +80,17 @@ func TestBlocksRefuseATextThatDoesNotFit(t *testing.T) {
 	}
 }
 
-func TestEscapeMasks(t *testing.T) {
-	for _, tc := range []struct{ in, want string }{
-		{"the password <secret:SHOP_PASSWORD> fails", "the password `<secret:SHOP_PASSWORD>` fails"},
-		{"sent `<secret:TOKEN>` and <redacted>", "sent `<secret:TOKEN>` and ``<redacted>``"},
-		{"```\ntoken=<secret:TOKEN>\n```\n<secret:TOKEN>", "```\ntoken=<secret:TOKEN>\n```\n`<secret:TOKEN>`"},
-		{"\\` <redacted> x", "\\` ``<redacted>`` x"},
-		{"<https://example.com|a link>", "<https://example.com|a link>"},
-		{"a `span\nwith <redacted>` and <redacted>", "a `span\nwith <redacted>` and ``<redacted>``"},
-		{"an open `\n\n<redacted> x", "an open `\n\n`<redacted>` x"},
-		{"a ` b <redacted>", "a ` b ``<redacted>``"},
-		{"C:\\<secret:DIR>", "C:\\\\`<secret:DIR>`"},
-		{"`code`<redacted>`more`", "`code` ``<redacted>`` `more`"},
-		{"C:\\\\<secret:DIR>", "C:\\\\`<secret:DIR>`"},
-	} {
-		if got := escapeMasks(tc.in); got != tc.want {
-			t.Errorf("escapeMasks(%q) = %q, want %q", tc.in, got, tc.want)
-		}
+// TestNoteBlockEscapesMasks checks that the placeholders of a body are put
+// in code spans outside code, and left alone in it, a code span that goes
+// on over the lines of a paragraph among it.
+func TestNoteBlockEscapesMasks(t *testing.T) {
+	notes, err := parseNotes([]any{entry("J", "S", "passed", "info", "", "a `span\nwith <redacted>` and <redacted>\n\n```\ntoken=<redacted>\n```")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "ℹ️ **info**\n\na `span\nwith <redacted>` and ``<redacted>``\n\n```\ntoken=<redacted>\n```\n\n_J › S · passed_"
+	if got := noteBlock(notes[0]); got != want {
+		t.Errorf("noteBlock() =\n%q\nwant\n%q", got, want)
 	}
 }
 

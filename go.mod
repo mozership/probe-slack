@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/hashicorp/go-hclog v1.6.3
-	github.com/mozership/probe v1.32.0
+	github.com/mozership/probe v1.33.0
 )
 
 require (
@@ -16,6 +16,7 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/oklog/run v1.1.0 // indirect
+	github.com/yuin/goldmark v1.8.7 // indirect
 	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
