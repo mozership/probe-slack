@@ -4,9 +4,9 @@ guard: [read-only, allow-host]
 params: [webhook_url, token, channel, text, notes, api_url, timeout]
 runs:
   using: binary
-  url: https://github.com/mozership/probe-slack/releases/download/v0.1.2/probe-slack_{os}_{arch}
+  url: https://github.com/mozership/probe-slack/releases/download/v0.1.3/probe-slack_{os}_{arch}
   checksums:
-    darwin_amd64: "7159c8a2530943cd179114dcb93a7cd3a50f4229933d78eb0afec0484f642cee"
-    darwin_arm64: "1997bffaf27979dee70692c4f7fd67d7b792b5bc709b9f6541c5514d87673187"
-    linux_amd64: "72c1450211e22f8b481e0eea9bc99df9bb04af3d6a500adb6b69fe9f577b8903"
-    linux_arm64: "d7b040de379dcabc1e1e7eb43f00cd53a1c81ea8c0a5fb42e8eb572463c9b7fe"
+    darwin_amd64: "62ab824a6f061d93756c2dc074e9e0dcba66b9b54a0b9b7b543f8df4de5a5640"
+    darwin_arm64: "a0678c5d657dc8dc01c1e75f774a5f1e09fecb1fa147514b61db18a4440fea6d"
+    linux_amd64: "49dc72ccdd8c6c55c7a7dfeb4bc3b3e91c55c61ea088f18d12fbb8ae28ae021e"
+    linux_arm64: "607a3a2e543d047c76b8b40d1164d43abed7c636c21c50373db2949a4363d66b"
