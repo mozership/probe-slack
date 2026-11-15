@@ -4,7 +4,7 @@ A [Probe](https://github.com/mozership/probe) action that posts a message to a S
 
 Actions can leave notes for people besides whether their step passed, and a later step reads them as [`notes`](https://probe.linyo.ws/reference/yaml-configuration#notes), with the job and the step of each and the secrets hidden. Probe does not post them anywhere. This action posts them to Slack, so that a team hears of a critical note, or of a failed run on a schedule, where it talks. Posting a message is all it does with Slack.
 
-It needs Probe v1.32.0 or later, the first with the `notes` context.
+It is an [external action](https://probe.linyo.ws/guide/concepts/actions#external-actions): Probe downloads it the first time a workflow uses it, and runs the executable whose SHA-256 the `action.yml` at the pinned commit names. It needs Probe v1.32.0 or later, the first with the `notes` context.
 
 ```yaml
 name: Nightly
@@ -45,7 +45,16 @@ The workflow gives the action a name once, under `actions`, and its steps use th
 | The channel | The one the webhook was made for | `channel`, by id or `#name`, of those the bot was invited to |
 | What it returns | `res.posted` | `res.posted`, and `res.channel` and `res.ts` of the message |
 
-A webhook needs nothing else, and is the way for one channel. A token posts to the channel each step names. Give one of the two, not both, and list the URL of the webhook, or the token, under `secrets`: the URL of a webhook is all it takes to post to it.
+A webhook needs nothing else, and is the way for one channel. A token posts to the channel each step names. Give one of the two, not both, and list the URL of the webhook, or the token, under [`secrets`](https://probe.linyo.ws/reference/yaml-configuration#secrets): the URL of a webhook is all it takes to post to it.
+
+```yaml
+  - name: The critical notes, to the channel of the team on call
+    uses: slack
+    with:
+      token: "{{vars.slack_token}}"
+      channel: "#oncall"
+      notes: "{{ filter(notes, .level == 'critical') }}"
+```
 
 Each run posts a new message. The action does not edit one, nor reply in a thread: a message kept up to date for each push belongs on the pull request, with [probe-github-notes](https://github.com/mozership/probe-github-notes).
 
@@ -110,7 +119,7 @@ The action keeps to the guard of the run, and its `action.yml` declares `guard: 
 - Under `--read-only`, a step is refused before any request, as posting writes.
 - Under `--allow-host`, the host of `webhook_url` or `api_url`, and of each redirect, must be one the run allows: `hooks.slack.com` for a webhook, and `slack.com` for a token. A URL without a port is taken at the port of its scheme.
 
-A refused step fails with the kind `refused`.
+A refused step fails with the kind `refused`. See [Guard](https://probe.linyo.ws/guide/concepts/guard).
 
 ## Testing
 
