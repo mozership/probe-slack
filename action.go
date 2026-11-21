@@ -347,8 +347,7 @@ func sendError(u *url.URL, err error) error {
 	case errors.As(err, &op):
 		return fmt.Errorf("POST %s: %s: %v", u.Host, op.Op, op.Err)
 	}
-	var redirect *redirectError
-	if errors.As(err, &redirect) {
+	if redirect, ok := errors.AsType[*redirectError](err); ok {
 		return fmt.Errorf("POST %s: %s", u.Host, redirect.msg)
 	}
 	return fmt.Errorf("POST %s: the request failed", u.Host)
