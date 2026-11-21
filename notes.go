@@ -90,7 +90,7 @@ func (m message) blocks() ([]map[string]any, int, error) {
 	if !fits(shown, total) {
 		shown = -1
 		chars := 0
-		for k := 0; k < len(chunks); k++ {
+		for k := range chunks {
 			if !fits(k, chars) {
 				break
 			}

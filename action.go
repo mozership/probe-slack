@@ -322,7 +322,7 @@ func send(ctx context.Context, c *http.Client, u *url.URL, token string, payload
 		if !seconds.MatchString(after) {
 			after = "a few"
 		}
-		return resp.StatusCode, body, fmt.Errorf("Slack answered 429 Too Many Requests: it takes messages again in %s seconds", after)
+		return resp.StatusCode, body, fmt.Errorf("the Slack API answered 429 Too Many Requests: it takes messages again in %s seconds", after)
 	}
 	return resp.StatusCode, body, err
 }
@@ -347,8 +347,7 @@ func sendError(u *url.URL, err error) error {
 	case errors.As(err, &op):
 		return fmt.Errorf("POST %s: %s: %v", u.Host, op.Op, op.Err)
 	}
-	var redirect *redirectError
-	if errors.As(err, &redirect) {
+	if redirect, ok := errors.AsType[*redirectError](err); ok {
 		return fmt.Errorf("POST %s: %s", u.Host, redirect.msg)
 	}
 	return fmt.Errorf("POST %s: the request failed", u.Host)
