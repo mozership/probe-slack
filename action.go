@@ -322,7 +322,7 @@ func send(ctx context.Context, c *http.Client, u *url.URL, token string, payload
 		if !seconds.MatchString(after) {
 			after = "a few"
 		}
-		return resp.StatusCode, body, fmt.Errorf("Slack answered 429 Too Many Requests: it takes messages again in %s seconds", after)
+		return resp.StatusCode, body, fmt.Errorf("the Slack API answered 429 Too Many Requests: it takes messages again in %s seconds", after)
 	}
 	return resp.StatusCode, body, err
 }
