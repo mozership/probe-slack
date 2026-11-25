@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
-	"github.com/mozership/probe/actionrpc"
+	"github.com/mozership/probe/sdk"
 )
 
 // DefaultTimeout bounds a step whose with does not set timeout.
@@ -54,7 +54,7 @@ var slackError = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 // keeps are the kinds of guard the action keeps to, as action.yml declares
 // them: it posts only when the run is not read-only, and connects only to a
 // host the run allows.
-var keeps = []string{actionrpc.KindReadOnly, actionrpc.KindAllowHost}
+var keeps = []string{sdk.KindReadOnly, sdk.KindAllowHost}
 
 // Action posts a message to a Slack channel.
 type Action struct {
@@ -65,16 +65,16 @@ type Action struct {
 
 // Run posts the message in with, under no guard.
 func (a *Action) Run(with map[string]any) (map[string]any, error) {
-	ret, _, err := a.RunStep(actionrpc.Call{With: with})
+	ret, _, err := a.RunStep(sdk.Call{With: with})
 	return ret, err
 }
 
 // RunStep posts the message in call.With under the guard of the run.
-func (a *Action) RunStep(call actionrpc.Call) (map[string]any, map[string]any, error) {
+func (a *Action) RunStep(call sdk.Call) (map[string]any, map[string]any, error) {
 	if a.log == nil {
 		a.log = hclog.NewNullLogger()
 	}
-	actionrpc.LogParams(a.log, "received request parameters", forLog(call.With))
+	sdk.LogParams(a.log, "received request parameters", forLog(call.With))
 
 	start := time.Now()
 	req, err := parseRequest(call.With)
@@ -82,14 +82,14 @@ func (a *Action) RunStep(call actionrpc.Call) (map[string]any, map[string]any, e
 		return nil, nil, err
 	}
 	if call.Guard.ReadOnly {
-		return nil, nil, actionrpc.Refuse("the run is read-only, and posting to Slack writes")
+		return nil, nil, sdk.Refuse("the run is read-only, and posting to Slack writes")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), req.timeout)
 	defer cancel()
 	res, err := a.post(ctx, req, call.Guard)
 	if err != nil {
-		actionrpc.LogOutcome(a.log, "posting to Slack", nil, err)
+		sdk.LogOutcome(a.log, "posting to Slack", nil, err)
 		return nil, nil, err
 	}
 	ret := map[string]any{
@@ -98,7 +98,7 @@ func (a *Action) RunStep(call actionrpc.Call) (map[string]any, map[string]any, e
 		"rt":     time.Since(start).String(),
 		"status": 0,
 	}
-	actionrpc.LogOutcome(a.log, "posting to Slack", ret, nil)
+	sdk.LogOutcome(a.log, "posting to Slack", ret, nil)
 	return ret, nil, nil
 }
 
@@ -207,14 +207,14 @@ func parseRequest(with map[string]any) (*request, error) {
 	}
 
 	if v, ok := with["timeout"]; ok {
-		if r.timeout, err = actionrpc.ParseTimeout(v); err != nil {
+		if r.timeout, err = sdk.ParseTimeout(v); err != nil {
 			return nil, fmt.Errorf("with.timeout: %w", err)
 		}
 	}
 	return r, nil
 }
 
-func (a *Action) post(ctx context.Context, r *request, guard actionrpc.Guard) (result, error) {
+func (a *Action) post(ctx context.Context, r *request, guard sdk.Guard) (result, error) {
 	if len(r.msg.notes) == 0 && strings.TrimSpace(r.msg.text) == "" {
 		a.log.Info("no notes and no text, so nothing is posted")
 		return result{}, nil
@@ -234,7 +234,7 @@ func (a *Action) post(ctx context.Context, r *request, guard actionrpc.Guard) (r
 
 // postWebhook posts payload to an Incoming Webhook, which answers ok, or an
 // error as plain text with a status other than 200.
-func (a *Action) postWebhook(ctx context.Context, c *http.Client, u *url.URL, payload map[string]any, guard actionrpc.Guard) (result, error) {
+func (a *Action) postWebhook(ctx context.Context, c *http.Client, u *url.URL, payload map[string]any, guard sdk.Guard) (result, error) {
 	code, body, err := send(ctx, c, u, "", payload, guard)
 	res := result{code: code}
 	if err != nil {
@@ -255,7 +255,7 @@ func (a *Action) postWebhook(ctx context.Context, c *http.Client, u *url.URL, pa
 
 // postMessage posts payload with chat.postMessage, which answers 200 with
 // ok false and an error for most of what goes wrong.
-func (a *Action) postMessage(ctx context.Context, c *http.Client, r *request, payload map[string]any, guard actionrpc.Guard) (result, error) {
+func (a *Action) postMessage(ctx context.Context, c *http.Client, r *request, payload map[string]any, guard sdk.Guard) (result, error) {
 	u, err := r.apiURL.Parse("chat.postMessage")
 	if err != nil {
 		return result{}, err
@@ -290,7 +290,7 @@ func (a *Action) postMessage(ctx context.Context, c *http.Client, r *request, pa
 
 // send posts payload as JSON to u, with token as a bearer token when it is
 // given, and returns the status code and the body of the response.
-func send(ctx context.Context, c *http.Client, u *url.URL, token string, payload any, guard actionrpc.Guard) (int, []byte, error) {
+func send(ctx context.Context, c *http.Client, u *url.URL, token string, payload any, guard sdk.Guard) (int, []byte, error) {
 	if err := checkHost(guard, u); err != nil {
 		return 0, nil, err
 	}
@@ -332,7 +332,7 @@ func send(ctx context.Context, c *http.Client, u *url.URL, token string, payload
 // can name it, or a path a redirect gave, at any depth, so only the kinds
 // of error known to name no more than a host are told.
 func sendError(u *url.URL, err error) error {
-	var refused *actionrpc.Refused
+	var refused *sdk.Refused
 	var op *net.OpError
 	var dns *net.DNSError
 	switch {
@@ -361,7 +361,7 @@ func (e *redirectError) Error() string { return e.msg }
 
 // httpClient is the client of the action, which follows a redirect only to
 // a host the guard allows, and only when the POST stays a POST.
-func (a *Action) httpClient(guard actionrpc.Guard) *http.Client {
+func (a *Action) httpClient(guard sdk.Guard) *http.Client {
 	c := http.Client{Transport: http.DefaultTransport}
 	if a.client != nil {
 		c = *a.client
@@ -382,7 +382,7 @@ func (a *Action) httpClient(guard actionrpc.Guard) *http.Client {
 
 // checkHost returns a Refused error when the guard does not allow the host
 // of u. A host without a port is taken at the port of its scheme.
-func checkHost(guard actionrpc.Guard, u *url.URL) error {
+func checkHost(guard sdk.Guard, u *url.URL) error {
 	host := u.Host
 	if u.Port() == "" {
 		port := "80"

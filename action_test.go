@@ -12,8 +12,7 @@ import (
 	"testing"
 
 	"github.com/mozership/probe-slack/internal/fakeslack"
-	"github.com/mozership/probe/actionref"
-	"github.com/mozership/probe/actionrpc"
+	"github.com/mozership/probe/sdk"
 )
 
 const token = "xoxb-test"
@@ -200,8 +199,8 @@ func TestManyNotesFitWhatSlackTakes(t *testing.T) {
 
 func TestReadOnlyRefuses(t *testing.T) {
 	fake, ts := slack(t)
-	_, _, err := (&Action{}).RunStep(actionrpc.Call{With: map[string]any{"webhook_url": ts.URL + fakeslack.WebhookPath, "notes": someNotes()}, Guard: actionrpc.Guard{ReadOnly: true}})
-	if !actionrpc.IsRefused(err) || fake.Requests != 0 {
+	_, _, err := (&Action{}).RunStep(sdk.Call{With: map[string]any{"webhook_url": ts.URL + fakeslack.WebhookPath, "notes": someNotes()}, Guard: sdk.Guard{ReadOnly: true}})
+	if !sdk.IsRefused(err) || fake.Requests != 0 {
 		t.Errorf("error = %v, %d requests; want it refused before any", err, fake.Requests)
 	}
 }
@@ -210,14 +209,14 @@ func TestAllowHost(t *testing.T) {
 	fake, ts := slack(t)
 	u, _ := url.Parse(ts.URL)
 	with := map[string]any{"webhook_url": ts.URL + fakeslack.WebhookPath, "notes": someNotes()}
-	_, _, err := (&Action{}).RunStep(actionrpc.Call{With: with, Guard: actionrpc.Guard{AllowHosts: []string{"hooks.slack.com"}}})
-	if !actionrpc.IsRefused(err) || fake.Requests != 0 {
+	_, _, err := (&Action{}).RunStep(sdk.Call{With: with, Guard: sdk.Guard{AllowHosts: []string{"hooks.slack.com"}}})
+	if !sdk.IsRefused(err) || fake.Requests != 0 {
 		t.Errorf("error = %v, %d requests; want it refused before any", err, fake.Requests)
 	}
 	if strings.Contains(err.Error(), fakeslack.WebhookPath) {
 		t.Errorf("error = %v, want the webhook not told", err)
 	}
-	if _, _, err := (&Action{}).RunStep(actionrpc.Call{With: with, Guard: actionrpc.Guard{AllowHosts: []string{u.Host}}}); err != nil {
+	if _, _, err := (&Action{}).RunStep(sdk.Call{With: with, Guard: sdk.Guard{AllowHosts: []string{u.Host}}}); err != nil {
 		t.Errorf("error = %v, want the host of the webhook allowed", err)
 	}
 }
@@ -267,8 +266,8 @@ func TestErrorsDoNotTellTheWebhook(t *testing.T) {
 	}))
 	t.Cleanup(moved.Close)
 	u, _ := url.Parse(moved.URL)
-	_, _, err := (&Action{}).RunStep(actionrpc.Call{With: map[string]any{"webhook_url": moved.URL + fakeslack.WebhookPath, "text": "hi"}, Guard: actionrpc.Guard{AllowHosts: []string{u.Host}}})
-	if !actionrpc.IsRefused(err) || strings.Contains(err.Error(), "/services") {
+	_, _, err := (&Action{}).RunStep(sdk.Call{With: map[string]any{"webhook_url": moved.URL + fakeslack.WebhookPath, "text": "hi"}, Guard: sdk.Guard{AllowHosts: []string{u.Host}}})
+	if !sdk.IsRefused(err) || strings.Contains(err.Error(), "/services") {
 		t.Errorf("error = %v, want a refusal of the redirect without the webhook", err)
 	}
 }
@@ -341,7 +340,7 @@ func TestManifestsDeclare(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		m, err := actionref.ParseManifest(data)
+		m, err := sdk.ParseManifest(data)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}

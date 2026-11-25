@@ -5,18 +5,18 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/mozership/probe/actionrpc"
-	"github.com/mozership/probe/mask/markdown"
+	"github.com/mozership/probe/sdk"
+	"github.com/mozership/probe/sdk/markdown"
 )
 
 // levels are the levels in the order the line counting them names them.
-var levels = []string{actionrpc.NoteCritical, actionrpc.NoteWarning, actionrpc.NoteInfo}
+var levels = []string{sdk.NoteCritical, sdk.NoteWarning, sdk.NoteInfo}
 
 // emojis mark a note of each level.
 var emojis = map[string]string{
-	actionrpc.NoteCritical: "🚨",
-	actionrpc.NoteWarning:  "⚠️",
-	actionrpc.NoteInfo:     "ℹ️",
+	sdk.NoteCritical: "🚨",
+	sdk.NoteWarning:  "⚠️",
+	sdk.NoteInfo:     "ℹ️",
 }
 
 // Slack takes at most maxBlocks blocks in a message, and maxMarkdown
@@ -32,8 +32,8 @@ const (
 const maxFallback = 40000
 
 // parseNotes reads with.notes, a list of entries of the notes context.
-func parseNotes(v any) ([]actionrpc.Note, error) {
-	notes, err := actionrpc.ParseNotes(v)
+func parseNotes(v any) ([]sdk.Note, error) {
+	notes, err := sdk.ParseNotes(v)
 	if err != nil {
 		// The error starts with notes, as notes[1]: body is missing.
 		return nil, fmt.Errorf("with.%w", err)
@@ -44,7 +44,7 @@ func parseNotes(v any) ([]actionrpc.Note, error) {
 // message is what the action posts: text the workflow wrote, and the notes.
 type message struct {
 	text  string
-	notes []actionrpc.Note
+	notes []sdk.Note
 }
 
 // blocks writes the message as Block Kit markdown blocks: the text, a line
@@ -155,7 +155,7 @@ func (m message) fallback(shown int) string {
 
 // noteBlock writes n: its emoji and title, its body, and a line naming its
 // job, its step, and the status of the step.
-func noteBlock(n actionrpc.Note) string {
+func noteBlock(n sdk.Note) string {
 	var b strings.Builder
 	head := "**" + n.Level
 	if t := strings.TrimSpace(n.Title); t != "" {
@@ -170,7 +170,7 @@ func noteBlock(n actionrpc.Note) string {
 }
 
 // countLine says how many notes there are of each level.
-func countLine(notes []actionrpc.Note) string {
+func countLine(notes []sdk.Note) string {
 	count := map[string]int{}
 	for _, n := range notes {
 		count[n.Level]++
@@ -185,7 +185,7 @@ func countLine(notes []actionrpc.Note) string {
 }
 
 // stepState is the status of the step of n, with its run.
-func stepState(n actionrpc.Note) string {
+func stepState(n sdk.Note) string {
 	s := orDash(n.Status)
 	if n.Run > 0 {
 		s += fmt.Sprintf(", run %d", n.Run)
